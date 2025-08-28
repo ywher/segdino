@@ -1,6 +1,6 @@
 # SegDINO
 
-SegDINO is a segmentation framework built on top of DINOv3 features..
+SegDINO is a segmentation framework built on top of DINOv3 features.
 
 ---
 ## Environment Setup
