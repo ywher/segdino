@@ -2,17 +2,7 @@ import random
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from blocks import FeatureFusionBlock, _make_scratch
-def _make_fusion_block(features, use_bn, size=None):
-    return FeatureFusionBlock(
-        features,
-        nn.ReLU(False),
-        deconv=False,
-        bn=use_bn,
-        expand=False,
-        align_corners=True,
-        size=size,
-    )
+from blocks import _make_scratch
 
 class DPTHead(nn.Module):
     def __init__(
@@ -65,27 +55,17 @@ class DPTHead(nn.Module):
         )
         
         self.scratch.stem_transpose = None
-        
-        self.scratch.refinenet1 = _make_fusion_block(features, use_bn)
-        self.scratch.refinenet2 = _make_fusion_block(features, use_bn)
-        self.scratch.refinenet3 = _make_fusion_block(features, use_bn)
-        self.scratch.refinenet4 = _make_fusion_block(features, use_bn)
-
-        self.scratch.output_conv = nn.Sequential(
-            nn.Conv2d(features, features, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(True),
-            nn.Conv2d(features, nclass, kernel_size=1, stride=1, padding=0)
-        )
+        self.scratch.output_conv = nn.Conv2d(features*4, nclass, kernel_size=1, stride=1, padding=0)  
     
     def forward(self, out_features, patch_h, patch_w):
         out = []
         for i, x in enumerate(out_features):
             x = x.permute(0, 2, 1).reshape((x.shape[0], x.shape[-1], patch_h, patch_w))
-            
             x = self.projects[i](x)
             x = self.resize_layers[i](x)
-            
             out.append(x)
+        
+        layer_1, layer_2, layer_3, layer_4 = out
         
         layer_1, layer_2, layer_3, layer_4 = out
         
@@ -93,16 +73,13 @@ class DPTHead(nn.Module):
         layer_2_rn = self.scratch.layer2_rn(layer_2)
         layer_3_rn = self.scratch.layer3_rn(layer_3)
         layer_4_rn = self.scratch.layer4_rn(layer_4)
-        
-        path_4 = self.scratch.refinenet4(layer_4_rn, size=layer_3_rn.shape[2:])        
-        path_3 = self.scratch.refinenet3(path_4, layer_3_rn, size=layer_2_rn.shape[2:])
-        path_2 = self.scratch.refinenet2(path_3, layer_2_rn, size=layer_1_rn.shape[2:])
-        path_1 = self.scratch.refinenet1(path_2, layer_1_rn)
-        
-        out = self.scratch.output_conv(path_1)
-        
+        target_hw = layer_1_rn.shape[-2:]  
+        layer_2_up = F.interpolate(layer_2_rn, size=target_hw, mode="bilinear", align_corners=True)
+        layer_3_up = F.interpolate(layer_3_rn, size=target_hw, mode="bilinear", align_corners=True)
+        layer_4_up = F.interpolate(layer_4_rn, size=target_hw, mode="bilinear", align_corners=True)
+        fused = torch.cat([layer_1_rn, layer_2_up, layer_3_up, layer_4_up], dim=1)
+        out = self.scratch.output_conv(fused)
         return out
-
 
 class DPT(nn.Module):
     def __init__(
