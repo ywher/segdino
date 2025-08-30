@@ -8,6 +8,7 @@ We propose SegDINO, an efficient image segmentation framework that couples a fro
 
 ```bash
 conda create -n segdino python=3.10.16
+
 conda activate segdino
 
 pip install -r requirements.txt
