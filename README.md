@@ -19,7 +19,7 @@ Clone the DINOv3 repository:
 git clone https://github.com/facebookresearch/dinov3.git
 ```
 
-Download DINO pretrained weights and place them in:
+Download [DINOv3](https://github.com/facebookresearch/dinov3)  pretrained weights and place them in:
 
 ```
 ./web_pth
