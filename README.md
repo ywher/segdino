@@ -28,8 +28,6 @@ Download DINO pretrained weights and place them in:
 
 ## Dataset Preparation
 
-Datasets can be downloaded here: [Baidu](#) | [Google](#)
-
 Organize datasets in the following structure:
 
 ```
@@ -53,14 +51,16 @@ Place the downloaded `.pth` files in a proper directory (e.g., `./checkpoints/`)
 Example training command:
 
 ```bash
-python train_segdino_b.py \
+python train_segdino.py \
   --data_dir ./segdata \
   --dataset tn3k \
+  --input_h 256 --input_w 256 \
+  --dino_size s \
+  --dino_ckpt ./web_pth/dinov3_vits16_pretrain_lvd1689m-08c60483.pth \
+  --repo_dir ./dinov3 \
   --img_dir_name image \
   --label_dir_name mask \
-  --mask_ext '.jpg' \
-  --input_h 256 --input_w 256 \
-  --repo_dir ./dinov3 \
+  --mask_ext '.jpg'
   --epochs 50 \
   --batch_size 4 \
   --lr 1e-4

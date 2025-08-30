@@ -11,10 +11,9 @@ class DPTHead(nn.Module):
         in_channels, 
         features=256, 
         use_bn=False, 
-        out_channels=[256, 512, 1024, 1024],
+        out_channels=[256, 512, 1024],
     ):
         super(DPTHead, self).__init__()
-        
         self.projects = nn.ModuleList([
             nn.Conv2d(
                 in_channels=in_channels,
@@ -25,35 +24,12 @@ class DPTHead(nn.Module):
             ) for out_channel in out_channels
         ])
         
-        self.resize_layers = nn.ModuleList([
-            nn.ConvTranspose2d(
-                in_channels=out_channels[0],
-                out_channels=out_channels[0],
-                kernel_size=4,
-                stride=4,
-                padding=0),
-            nn.ConvTranspose2d(
-                in_channels=out_channels[1],
-                out_channels=out_channels[1],
-                kernel_size=2,
-                stride=2,
-                padding=0),
-            nn.Identity(),
-            nn.Conv2d(
-                in_channels=out_channels[3],
-                out_channels=out_channels[3],
-                kernel_size=3,
-                stride=2,
-                padding=1)
-        ])
-        
         self.scratch = _make_scratch(
             out_channels,
             features,
             groups=1,
             expand=False,
         )
-        
         self.scratch.stem_transpose = None
         self.scratch.output_conv = nn.Conv2d(features*4, nclass, kernel_size=1, stride=1, padding=0)  
     
@@ -62,13 +38,9 @@ class DPTHead(nn.Module):
         for i, x in enumerate(out_features):
             x = x.permute(0, 2, 1).reshape((x.shape[0], x.shape[-1], patch_h, patch_w))
             x = self.projects[i](x)
-            x = self.resize_layers[i](x)
             out.append(x)
         
         layer_1, layer_2, layer_3, layer_4 = out
-        
-        layer_1, layer_2, layer_3, layer_4 = out
-        
         layer_1_rn = self.scratch.layer1_rn(layer_1)
         layer_2_rn = self.scratch.layer2_rn(layer_2)
         layer_3_rn = self.scratch.layer3_rn(layer_3)
