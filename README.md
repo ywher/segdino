@@ -1,6 +1,8 @@
 # SegDINO
+We propose SegDINO, an efficient image segmentation framework that couples a frozen DINOv3 backbone with a lightweight MLP decoder, achieving state-of-the-art performance on both medical and natural image segmentation tasks while maintaining minimal parameter and computational cost.
 
-SegDINO is a segmentation framework built on top of DINOv3 features.
+![](src/segdino_pic.png)
+
 
 ---
 ## Environment Setup
@@ -126,7 +128,7 @@ If you find this work useful, please consider citing:
 
 ```bibtex
 @article{yourname2025project,
-  title   = {Your Project Title},
+  title   = {SegDINO: An Efficient Design for Medical and Natural Image Segmentation with DINO-V3},
   author  = {Your Name and Co-authors},
   journal = {arXiv preprint arXiv:2501.12345},
   year    = {2025}
