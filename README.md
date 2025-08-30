@@ -4,7 +4,6 @@ We propose SegDINO, an efficient image segmentation framework that couples a fro
 ![](src/segdino_pic.png)
 
 
----
 ## Environment Setup
 
 ```bash
@@ -25,8 +24,6 @@ Download DINO pretrained weights and place them in:
 ```
 ./web_pth
 ```
-
----
 
 ## Dataset Preparation
 
@@ -50,13 +47,11 @@ Organize datasets in the following structure:
 
 Each dataset folder should contain an `image` directory and a `mask` directory.
 
----
 
 ## Pretrained Weights
 
 Place the downloaded `.pth` files in a proper directory (e.g., `./checkpoints/`).
 
----
 
 ## Training
 
@@ -78,8 +73,6 @@ python train_segdino.py \
   --lr 1e-4
 ```
 
----
-
 ## Testing
 
 Example testing command:
@@ -98,15 +91,11 @@ python test_segdino.py \
   --mask_ext '.jpg'
 ```
 
----
-
 ## Notes
 
 * Make sure the pretrained DINO weights (`.pth` file) are correctly downloaded and placed under `./web_pth`.
 * Modify paths as needed for your environment.
 * Training and testing configurations (e.g., image size, batch size, learning rate) can be adjusted via command-line arguments.
-
----
 
 ## Acknowledgements
 
