@@ -57,7 +57,7 @@ class DPT(nn.Module):
     def __init__(
         self, 
         encoder_size='base', 
-        nclass=21,
+        nclass=2,
         features=128, 
         out_channels=[96, 192, 384, 768], 
         use_bn=False,
