@@ -28,6 +28,16 @@ Download DINO pretrained weights and place them in:
 
 ## Dataset Preparation
 
+
+- **[TN3K](https://github.com/haifangong/TRFE-Net-for-thyroid-nodule-segmentation)**  
+  A large-scale thyroid nodule segmentation dataset~\citep{gong2023thyroid}, containing **3,493 ultrasound images** with pixel-level annotations collected from multiple hospitals.  
+
+- **[Kvasir-SEG](https://datasets.simula.no/kvasir-seg/)**  
+  A polyp segmentation dataset~\citep{jha2019kvasir} derived from colonoscopy examinations, consisting of **1,000 images** with high-quality expert annotations.  
+
+- **[ISIC](https://challenge.isic-archive.com/data/#2017)**  
+  A skin lesion segmentation benchmark~\citep{codella2018skin}, providing **2,750 dermoscopic images** annotated for lesion boundaries and covering diverse lesion types and acquisition conditions.  
+
 Organize datasets in the following structure:
 
 ```
@@ -98,5 +108,27 @@ python test_segdino.py \
 
 ## Acknowledgements
 
-We would like to thank Facebook Research for open-sourcing [DINOv3](https://github.com/facebookresearch/dinov3) and all contributors to the datasets used in this project.
+We would like to thank the open-source community for their invaluable contributions.  
+In particular, we acknowledge the following repositories that made this work possible:
 
+- [DINOv3](https://github.com/facebookresearch/dinov3)   
+
+- [DPT](https://github.com/isl-org/DPT)
+
+- [Unimatch](https://github.com/LiheYoung/UniMatch-V2)
+
+We are also grateful to all contributors of the datasets used in this project.
+
+
+## Citation
+
+If you find this work useful, please consider citing:
+
+```bibtex
+@article{yourname2025project,
+  title   = {Your Project Title},
+  author  = {Your Name and Co-authors},
+  journal = {arXiv preprint arXiv:2501.12345},
+  year    = {2025}
+}
+```
