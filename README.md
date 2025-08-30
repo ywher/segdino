@@ -44,8 +44,6 @@ Each dataset folder should contain an `image` directory and a `mask` directory.
 
 ## Pretrained Weights
 
-We provide trained SegDINO model weights: [Baidu](#) | [Google](#)
-
 Place the downloaded `.pth` files in a proper directory (e.g., `./checkpoints/`).
 
 ---
