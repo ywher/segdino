@@ -103,6 +103,5 @@ In particular, we acknowledge the following repositories that made this work pos
 
 - [Unimatch](https://github.com/LiheYoung/UniMatch-V2)
 
-We are also grateful to all contributors of the datasets used in this project.
 
 
