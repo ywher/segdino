@@ -106,15 +106,3 @@ In particular, we acknowledge the following repositories that made this work pos
 We are also grateful to all contributors of the datasets used in this project.
 
 
-## Citation
-
-If you find this work useful, please consider citing:
-
-```bibtex
-@article{yourname2025project,
-  title   = {SegDINO: An Efficient Design for Medical and Natural Image Segmentation with DINO-V3},
-  author  = {Your Name and Co-authors},
-  journal = {arXiv preprint arXiv:2501.12345},
-  year    = {2025}
-}
-```
