@@ -48,12 +48,6 @@ Organize datasets in the following structure:
 
 Each dataset folder should contain an `image` directory and a `mask` directory.
 
-
-## Pretrained Weights
-
-Place the downloaded `.pth` files in a proper directory (e.g., `./checkpoints/`).
-
-
 ## Training
 
 Example training command:
