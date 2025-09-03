@@ -1,4 +1,7 @@
 # SegDINO
+
+[SegDINO: An Efficient Design for Medical and Natural Image Segmentation with DINO-V3](https://arxiv.org/abs/2509.00833)
+
 We propose SegDINO, an efficient image segmentation framework that couples a frozen DINOv3 backbone with a lightweight MLP decoder, achieving state-of-the-art performance on both medical and natural image segmentation tasks while maintaining minimal parameter and computational cost.
 
 ![](src/segdino_pic.png)
@@ -103,5 +106,18 @@ In particular, we acknowledge the following repositories that made this work pos
 
 - [Unimatch](https://github.com/LiheYoung/UniMatch-V2)
 
+
+## Citation
+
+If you find this work useful in your research, please consider citing:
+
+```bibtex
+@article{yang2025segdino,
+  title={SegDINO: An Efficient Design for Medical and Natural Image Segmentation with DINO-V3},
+  author={Yang, Sicheng and Wang, Hongqiu and Xing, Zhaohu and Chen, Sixiang and Zhu, Lei},
+  journal={arXiv preprint arXiv:2509.00833},
+  year={2025}
+}
+```
 
 
