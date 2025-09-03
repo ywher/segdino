@@ -116,7 +116,8 @@ If you find this work useful in your research, please consider citing:
   title={SegDINO: An Efficient Design for Medical and Natural Image Segmentation with DINO-V3},
   author={Yang, Sicheng and Wang, Hongqiu and Xing, Zhaohu and Chen, Sixiang and Zhu, Lei},
   journal={arXiv preprint arXiv:2509.00833},
-  year={2025}
+  year={2025},
+  url={https://arxiv.org/abs/2509.00833}
 }
 ```
 
