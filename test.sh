@@ -1,0 +1,11 @@
+python test_segdino.py \
+  --data_dir ./segdata \
+  --dataset tn3k \
+  --input_h 256 --input_w 256 \
+  --dino_size s \
+  --dino_ckpt ./web_pth/dinov3_vits16_pretrain_lvd1689m-08c60483.pth \
+  --ckpt ./tn3k.pth \
+  --repo_dir ./dinov3 \
+  --img_dir_name image \
+  --label_dir_name mask \
+  --mask_ext '.jpg'
