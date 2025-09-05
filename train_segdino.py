@@ -4,12 +4,103 @@ import cv2
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import logging
 from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
 
 from dpt import DPT
 from dataset import FolderDataset, ResizeAndNormalize
+
+class FocalLoss(nn.Module):
+    """Focal Loss implementation for binary segmentation"""
+    def __init__(self, alpha=1.0, gamma=2.0, reduction='mean'):
+        super(FocalLoss, self).__init__()
+        self.alpha = alpha
+        self.gamma = gamma
+        self.reduction = reduction
+    
+    def forward(self, inputs, targets):
+        # Apply sigmoid to get probabilities
+        probs = torch.sigmoid(inputs)
+        
+        # Calculate BCE loss
+        bce_loss = F.binary_cross_entropy_with_logits(inputs, targets, reduction='none')
+        
+        # Calculate focal weight
+        p_t = probs * targets + (1 - probs) * (1 - targets)
+        focal_weight = self.alpha * (1 - p_t) ** self.gamma
+        
+        # Apply focal weight
+        focal_loss = focal_weight * bce_loss
+        
+        if self.reduction == 'mean':
+            return focal_loss.mean()
+        elif self.reduction == 'sum':
+            return focal_loss.sum()
+        else:
+            return focal_loss
+
+class DiceLoss(nn.Module):
+    """Dice Loss implementation for binary segmentation"""
+    def __init__(self, smooth=1.0, reduction='mean'):
+        super(DiceLoss, self).__init__()
+        self.smooth = smooth
+        self.reduction = reduction
+    
+    def forward(self, inputs, targets):
+        # Apply sigmoid to get probabilities
+        probs = torch.sigmoid(inputs)
+        
+        # Flatten tensors
+        probs = probs.view(-1)
+        targets = targets.view(-1)
+        
+        # Calculate intersection and union
+        intersection = (probs * targets).sum()
+        dice_coeff = (2.0 * intersection + self.smooth) / (probs.sum() + targets.sum() + self.smooth)
+        
+        # Dice loss is 1 - dice coefficient
+        dice_loss = 1 - dice_coeff
+        
+        return dice_loss
+
+class CombinedLoss(nn.Module):
+    """Combined loss function with BCE, Focal, and Dice losses"""
+    def __init__(self, bce_weight=1.0, focal_weight=1.0, dice_weight=1.0, 
+                 focal_alpha=1.0, focal_gamma=2.0, dice_smooth=1.0):
+        super(CombinedLoss, self).__init__()
+        self.bce_weight = bce_weight
+        self.focal_weight = focal_weight
+        self.dice_weight = dice_weight
+        
+        self.bce_loss = nn.BCEWithLogitsLoss()
+        self.focal_loss = FocalLoss(alpha=focal_alpha, gamma=focal_gamma)
+        self.dice_loss = DiceLoss(smooth=dice_smooth)
+    
+    def forward(self, inputs, targets):
+        losses = {}
+        total_loss = 0
+        
+        if self.bce_weight > 0:
+            bce = self.bce_loss(inputs, targets)
+            losses['bce'] = bce
+            total_loss += self.bce_weight * bce
+        
+        if self.focal_weight > 0:
+            focal = self.focal_loss(inputs, targets)
+            losses['focal'] = focal
+            total_loss += self.focal_weight * focal
+        
+        if self.dice_weight > 0:
+            dice = self.dice_loss(inputs, targets)
+            losses['dice'] = dice
+            total_loss += self.dice_weight * dice
+        
+        losses['total'] = total_loss
+        # 添加一个属性来存储详细损失，但返回总损失用于反向传播
+        self.last_losses = losses
+        return total_loss
 
 def count_parameters(model):
     """统计模型参数"""
@@ -145,12 +236,22 @@ def dice_binary_torch(pred_logits, target, eps=1e-6, thresh=0.5):
     dice = (2 * inter + eps) / union
     return dice
 
-def train_one_epoch(model, train_loader, optimizer, device, num_classes=1, dice_thr=0.5, vis_dir=None, epoch=0, writer=None):
+def train_one_epoch(model, train_loader, optimizer, device, num_classes=1, dice_thr=0.5, vis_dir=None, epoch=0, writer=None, criterion=None):
     model.train()
     total_loss = 0.0
+    bce_loss_sum = 0.0
+    focal_loss_sum = 0.0
+    dice_loss_sum = 0.0
     dice_scores = []
     iou_scores = []
-    criterion = nn.BCEWithLogitsLoss() if num_classes == 1 else nn.CrossEntropyLoss()
+    
+    # Use default BCE loss if no criterion provided
+    if criterion is None:
+        criterion = nn.BCEWithLogitsLoss() if num_classes == 1 else nn.CrossEntropyLoss()
+        use_combined_loss = False
+    else:
+        use_combined_loss = isinstance(criterion, CombinedLoss)
+    
     first_batch_logged = False
     
     # 配置进度条显示ETA
@@ -158,7 +259,7 @@ def train_one_epoch(model, train_loader, optimizer, device, num_classes=1, dice_
                 desc=f"[Train e{epoch}]",
                 unit="batch",
                 leave=True,
-                ncols=120,  # 设置进度条宽度
+                ncols=140,  # 增加宽度以显示更多信息
                 bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]')
     
     for step, (inputs, targets, _) in enumerate(pbar):
@@ -166,25 +267,54 @@ def train_one_epoch(model, train_loader, optimizer, device, num_classes=1, dice_
         targets = targets.to(device)
         optimizer.zero_grad()
         logits = model(inputs)
+        
         if num_classes == 1:
-            loss_cls = criterion(logits, targets)
+            if use_combined_loss:
+                loss = criterion(logits, targets)
+                # Get detailed losses from the last_losses attribute
+                losses = criterion.last_losses
+                
+                # Record individual losses
+                if 'bce' in losses:
+                    bce_loss_sum += losses['bce'].item()
+                if 'focal' in losses:
+                    focal_loss_sum += losses['focal'].item()
+                if 'dice' in losses:
+                    dice_loss_sum += losses['dice'].item()
+            else:
+                loss = criterion(logits, targets)
         else:
-            loss_cls = criterion(logits, targets.squeeze(1).long())
-        loss = loss_cls
+            loss = criterion(logits, targets.squeeze(1).long())
+        
         loss.backward()
         optimizer.step()
         total_loss += loss.item()
+        
         with torch.no_grad():
             dice = dice_binary_torch(logits, targets, thresh=dice_thr).mean().item()
             iou  = iou_binary_torch(logits, targets, thresh=dice_thr).mean().item()
             dice_scores.append(dice)
             iou_scores.append(iou)
-        pbar.set_postfix({
+        
+        # Update progress bar with loss information
+        postfix_dict = {
             'loss': f"{loss.item():.4f}",
             'dice': f"{dice:.4f}",
             'iou': f"{iou:.4f}",
             'lr': f"{optimizer.param_groups[0]['lr']:.2e}"
-        })
+        }
+        
+        if use_combined_loss and step > 0:
+            avg_bce = bce_loss_sum / (step + 1) if bce_loss_sum > 0 else 0
+            avg_focal = focal_loss_sum / (step + 1) if focal_loss_sum > 0 else 0
+            avg_dice_loss = dice_loss_sum / (step + 1) if dice_loss_sum > 0 else 0
+            postfix_dict.update({
+                'bce': f"{avg_bce:.3f}",
+                'focal': f"{avg_focal:.3f}",
+                'dloss': f"{avg_dice_loss:.3f}"
+            })
+        
+        pbar.set_postfix(postfix_dict)
         
         # 记录每个batch的指标到TensorBoard
         if writer is not None:
@@ -192,6 +322,16 @@ def train_one_epoch(model, train_loader, optimizer, device, num_classes=1, dice_
             writer.add_scalar('Train/Loss_Step', loss.item(), global_step)
             writer.add_scalar('Train/Dice_Step', dice, global_step)
             writer.add_scalar('Train/IoU_Step', iou, global_step)
+            
+            # Record individual loss components if using combined loss
+            if use_combined_loss and hasattr(criterion, 'last_losses'):
+                losses = criterion.last_losses
+                if 'bce' in losses:
+                    writer.add_scalar('Train/BCE_Loss_Step', losses['bce'].item(), global_step)
+                if 'focal' in losses:
+                    writer.add_scalar('Train/Focal_Loss_Step', losses['focal'].item(), global_step)
+                if 'dice' in losses:
+                    writer.add_scalar('Train/Dice_Loss_Step', losses['dice'].item(), global_step)
         
         if (not first_batch_logged) and vis_dir is not None:
             save_train_visuals(epoch, inputs, logits, targets, out_dir=vis_dir, max_save=8, thr=dice_thr)
@@ -199,26 +339,61 @@ def train_one_epoch(model, train_loader, optimizer, device, num_classes=1, dice_
             if writer is not None:
                 log_images_to_tensorboard(writer, inputs, logits, targets, epoch, 'Train', max_images=4, thr=dice_thr)
             first_batch_logged = True
+    
     avg_loss = total_loss / max(1, len(train_loader))
     avg_dice = float(np.mean(dice_scores)) if len(dice_scores) > 0 else 0.0
     avg_iou  = float(np.mean(iou_scores))  if len(iou_scores)  > 0 else 0.0
+    
+    # Calculate average individual losses
+    avg_bce_loss = bce_loss_sum / max(1, len(train_loader)) if bce_loss_sum > 0 else 0.0
+    avg_focal_loss = focal_loss_sum / max(1, len(train_loader)) if focal_loss_sum > 0 else 0.0
+    avg_dice_loss = dice_loss_sum / max(1, len(train_loader)) if dice_loss_sum > 0 else 0.0
     
     # 记录epoch平均指标到TensorBoard
     if writer is not None:
         writer.add_scalar('Train/Loss_Epoch', avg_loss, epoch)
         writer.add_scalar('Train/Dice_Epoch', avg_dice, epoch)
         writer.add_scalar('Train/IoU_Epoch', avg_iou, epoch)
+        
+        if use_combined_loss:
+            if avg_bce_loss > 0:
+                writer.add_scalar('Train/BCE_Loss_Epoch', avg_bce_loss, epoch)
+            if avg_focal_loss > 0:
+                writer.add_scalar('Train/Focal_Loss_Epoch', avg_focal_loss, epoch)
+            if avg_dice_loss > 0:
+                writer.add_scalar('Train/Dice_Loss_Epoch', avg_dice_loss, epoch)
     
-    logging.info(f"[Train Epoch {epoch}] loss={avg_loss:.4f}  dice={avg_dice:.4f}  iou={avg_iou:.4f}")
+    # Enhanced logging with individual losses
+    if use_combined_loss:
+        loss_components = []
+        if avg_bce_loss > 0:
+            loss_components.append(f"bce={avg_bce_loss:.4f}")
+        if avg_focal_loss > 0:
+            loss_components.append(f"focal={avg_focal_loss:.4f}")
+        if avg_dice_loss > 0:
+            loss_components.append(f"dice_loss={avg_dice_loss:.4f}")
+        
+        loss_info = f"total={avg_loss:.4f} ({', '.join(loss_components)})" if loss_components else f"total={avg_loss:.4f}"
+        logging.info(f"[Train Epoch {epoch}] loss={loss_info}  dice={avg_dice:.4f}  iou={avg_iou:.4f}")
+    else:
+        logging.info(f"[Train Epoch {epoch}] loss={avg_loss:.4f}  dice={avg_dice:.4f}  iou={avg_iou:.4f}")
+    
     return avg_loss, avg_dice
 
 @torch.no_grad()
-def evaluate(model, val_loader, device, num_classes=1, dice_thr=0.5, vis_dir=None, epoch=0, writer=None):
+def evaluate(model, val_loader, device, num_classes=1, dice_thr=0.5, vis_dir=None, epoch=0, writer=None, criterion=None):
     model.eval()
     total_loss = 0.0
     dice_scores = []
     iou_scores  = []
-    criterion = nn.BCEWithLogitsLoss() if num_classes == 1 else nn.CrossEntropyLoss()
+    
+    # Use default BCE loss if no criterion provided
+    if criterion is None:
+        criterion = nn.BCEWithLogitsLoss() if num_classes == 1 else nn.CrossEntropyLoss()
+        use_combined_loss = False
+    else:
+        use_combined_loss = isinstance(criterion, CombinedLoss)
+    
     idx_global = 0
     first_batch_logged = False
     
@@ -234,10 +409,15 @@ def evaluate(model, val_loader, device, num_classes=1, dice_thr=0.5, vis_dir=Non
         inputs  = inputs.to(device)
         targets = targets.to(device)
         logits = model(inputs)
+        
         if num_classes == 1:
-            loss = criterion(logits, targets)
+            if use_combined_loss:
+                loss = criterion(logits, targets)
+            else:
+                loss = criterion(logits, targets)
         else:
             loss = criterion(logits, targets.squeeze(1).long())
+            
         total_loss += loss.item()
         dice = dice_binary_torch(logits, targets, thresh=dice_thr).mean().item()
         iou  = iou_binary_torch(logits, targets, thresh=dice_thr).mean().item()
@@ -311,6 +491,19 @@ def main():
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--weight_decay", type=float, default=1e-4)
     parser.add_argument("--num_workers", type=int, default=16)
+    # loss args
+    parser.add_argument("--bce_weight", type=float, default=1.0,
+                        help="Weight for BCE loss component")
+    parser.add_argument("--focal_weight", type=float, default=0.0,
+                        help="Weight for Focal loss component (0 to disable)")
+    parser.add_argument("--dice_weight", type=float, default=0.0,
+                        help="Weight for Dice loss component (0 to disable)")
+    parser.add_argument("--focal_alpha", type=float, default=1.0,
+                        help="Alpha parameter for Focal loss")
+    parser.add_argument("--focal_gamma", type=float, default=2.0,
+                        help="Gamma parameter for Focal loss")
+    parser.add_argument("--dice_smooth", type=float, default=1.0,
+                        help="Smoothing parameter for Dice loss")
     # other args 
     parser.add_argument("--last_layer_idx", type=int, default=-1)
     parser.add_argument("--vis_max_save", type=int, default=8)
@@ -394,6 +587,28 @@ def main():
     # 统计和输出模型参数信息
     param_stats = print_model_parameters(model, logging)
     
+    # Create loss function based on parameters
+    if args.focal_weight > 0 or args.dice_weight > 0:
+        criterion = CombinedLoss(
+            bce_weight=args.bce_weight,
+            focal_weight=args.focal_weight,
+            dice_weight=args.dice_weight,
+            focal_alpha=args.focal_alpha,
+            focal_gamma=args.focal_gamma,
+            dice_smooth=args.dice_smooth
+        )
+        loss_info = []
+        if args.bce_weight > 0:
+            loss_info.append(f"BCE(w={args.bce_weight})")
+        if args.focal_weight > 0:
+            loss_info.append(f"Focal(w={args.focal_weight}, α={args.focal_alpha}, γ={args.focal_gamma})")
+        if args.dice_weight > 0:
+            loss_info.append(f"Dice(w={args.dice_weight}, smooth={args.dice_smooth})")
+        logging.info(f"Using Combined Loss: {' + '.join(loss_info)}")
+    else:
+        criterion = nn.BCEWithLogitsLoss() if args.num_classes == 1 else nn.CrossEntropyLoss()
+        logging.info("Using default BCE loss")
+    
     optimizer = torch.optim.AdamW(
         filter(lambda p: p.requires_grad, model.parameters()),
         lr=args.lr, weight_decay=args.weight_decay
@@ -454,12 +669,14 @@ def main():
         train_loss, train_dice = train_one_epoch(
             model, train_loader, optimizer, device,
             num_classes=args.num_classes, dice_thr=0.5,
-            vis_dir=train_vis_dir, epoch=epoch, writer=writer
+            vis_dir=train_vis_dir, epoch=epoch, writer=writer,
+            criterion=criterion
         )
         val_loss, val_dice, val_iou = evaluate(
             model, val_loader, device,
             num_classes=args.num_classes, dice_thr=0.5,
-            vis_dir=val_vis_dir, epoch=epoch, writer=writer
+            vis_dir=val_vis_dir, epoch=epoch, writer=writer,
+            criterion=criterion
         )
         
         # 记录学习率到TensorBoard
