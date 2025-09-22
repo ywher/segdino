@@ -4,6 +4,8 @@
 # label_dir_name="label"
 # img_ext=".jpg"
 # mask_ext=".jpg"
+# input_h=256
+# input_w=256
 
 # xh_kidney
 dataset="xh_kidney"
@@ -11,10 +13,10 @@ img_dir_name="image"
 label_dir_name="label"
 img_ext=".jpg"
 mask_ext=".png"
+input_h=224
+input_w=224
 
 
-input_h=256
-input_w=256
 dino_size="b"
 dino_ckpt="./web_pth/dinov3_vitb16.pth"
 
@@ -34,5 +36,8 @@ CUDA_VISIBLE_DEVICES=0 python train_segdino.py \
   --dino_ckpt $dino_ckpt \
   --epochs 50 \
   --batch_size 4 \
-  --lr 1e-4
-#   --freeze_backbone
+  --lr 1e-4 \
+  --bce_weight 1.0 \
+  --focal_weight 0.0 \
+  --dice_weight 0.0 \
+  # --freeze_backbone

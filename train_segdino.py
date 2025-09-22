@@ -6,6 +6,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import logging
+import math
+import datetime
 from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
 
@@ -67,7 +69,7 @@ class DiceLoss(nn.Module):
 
 class CombinedLoss(nn.Module):
     """Combined loss function with BCE, Focal, and Dice losses"""
-    def __init__(self, bce_weight=1.0, focal_weight=1.0, dice_weight=1.0, 
+    def __init__(self, bce_weight=1.0, focal_weight=1.0, dice_weight=2.0, 
                  focal_alpha=1.0, focal_gamma=2.0, dice_smooth=1.0):
         super(CombinedLoss, self).__init__()
         self.bce_weight = bce_weight
@@ -293,6 +295,7 @@ def train_one_epoch(model, train_loader, optimizer, device, num_classes=1, dice_
         with torch.no_grad():
             dice = dice_binary_torch(logits, targets, thresh=dice_thr).mean().item()
             iou  = iou_binary_torch(logits, targets, thresh=dice_thr).mean().item()
+            
             dice_scores.append(dice)
             iou_scores.append(iou)
         
@@ -376,7 +379,7 @@ def train_one_epoch(model, train_loader, optimizer, device, num_classes=1, dice_
         loss_info = f"total={avg_loss:.4f} ({', '.join(loss_components)})" if loss_components else f"total={avg_loss:.4f}"
         logging.info(f"[Train Epoch {epoch}] loss={loss_info}  dice={avg_dice:.4f}  iou={avg_iou:.4f}")
     else:
-        logging.info(f"[Train Epoch {epoch}] loss={avg_loss:.4f}  dice={avg_dice:.4f}  iou={avg_iou:.4f}")
+        logging.info(f"[Train Epoch {epoch}] bce loss={avg_loss:.4f}  dice={avg_dice:.4f}  iou={avg_iou:.4f}")
     
     return avg_loss, avg_dice
 
@@ -421,8 +424,10 @@ def evaluate(model, val_loader, device, num_classes=1, dice_thr=0.5, vis_dir=Non
         total_loss += loss.item()
         dice = dice_binary_torch(logits, targets, thresh=dice_thr).mean().item()
         iou  = iou_binary_torch(logits, targets, thresh=dice_thr).mean().item()
+        
         dice_scores.append(dice)
         iou_scores.append(iou)
+        
         pbar.set_postfix({
             'loss': f"{loss.item():.4f}",
             'dice': f"{dice:.4f}",
@@ -494,9 +499,9 @@ def main():
     # loss args
     parser.add_argument("--bce_weight", type=float, default=1.0,
                         help="Weight for BCE loss component")
-    parser.add_argument("--focal_weight", type=float, default=0.0,
+    parser.add_argument("--focal_weight", type=float, default=1.0,
                         help="Weight for Focal loss component (0 to disable)")
-    parser.add_argument("--dice_weight", type=float, default=0.0,
+    parser.add_argument("--dice_weight", type=float, default=2.0,
                         help="Weight for Dice loss component (0 to disable)")
     parser.add_argument("--focal_alpha", type=float, default=1.0,
                         help="Alpha parameter for Focal loss")
@@ -522,6 +527,9 @@ def main():
         save_root = f"./runs/segdino_{args.dino_size}_{args.input_h}_{args.dataset}_freeze"
     else:
         save_root = f"./runs/segdino_{args.dino_size}_{args.input_h}_{args.dataset}"
+    # save_root添加上batch size, lr和日期时间戳
+    save_root = os.path.join(save_root, f"bce_{args.bce_weight}_focal_{args.focal_weight}_dice_{args.dice_weight}_bs{args.batch_size}_lr{args.lr}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}" )
+
     os.makedirs(save_root, exist_ok=True)
     
     # 设置logging配置
@@ -566,13 +574,18 @@ def main():
 
     if args.dino_size == "b":
         backbone = torch.hub.load(args.repo_dir, 'dinov3_vitb16', source='local', weights=args.dino_ckpt)
+        encoder_size = "base"
+    elif args.dino_size == "l":
+        backbone = torch.hub.load(args.repo_dir, 'dinov3_vitl16', source='local', weights=args.dino_ckpt)
+        encoder_size = "large"
     else:
         backbone = torch.hub.load(args.repo_dir, 'dinov3_vits16', source='local', weights=args.dino_ckpt)
-    
+        encoder_size = "small"
+
     logging.info(f"Loaded DINO backbone: {args.dino_size} from {args.dino_ckpt}")
 
     
-    model = DPT(nclass=1, backbone=backbone)
+    model = DPT(encoder_size=encoder_size, nclass=1, backbone=backbone)
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model = model.to(device)
     logging.info(f"Model loaded on device: {device}")
